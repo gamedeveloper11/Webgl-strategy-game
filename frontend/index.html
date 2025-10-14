@@ -1,0 +1,36 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web3 Strategy Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="ui">
+    <h1>🌍 Web3 Strategy Game</h1>
+
+    <div class="wallet-buttons">
+      <button id="connectMetamask">Connect MetaMask</button>
+      <button id="connectPhantom">Connect Phantom</button>
+      <button id="mintNFT">Mint NFT</button>
+    </div>
+
+    <div class="chat-box">
+      <h3>💬 Internal Chat</h3>
+      <div id="chatMessages"></div>
+      <input type="text" id="chatInput" placeholder="Type message..." />
+      <button id="sendMessage">Send</button>
+    </div>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Socket.IO must load from backend -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Load main logic -->
+  <script type="module" src="./script.js"></script>
+</body>
+</html>
