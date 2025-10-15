@@ -1,47 +1,34 @@
 
-// server.js
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import bodyParser from 'body-parser';
-import { mintNFT } from './Modules/nftMint.js';
+
+
+
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import path from "path";
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
-// Middleware
-app.use(bodyParser.json());
-app.use(express.static('../Frontend'));  // Serve frontend files
-app.use('/Assets', express.static('../Assets')); // Serve JSON / image files
+app.use(cors());
+app.use(express.static(path.join(process.cwd(), "frontend")));
 
-// --- Socket.IO chat ---
 io.on("connection", (socket) => {
-  console.log("A user connected");
+  console.log("A user connected:", socket.id);
 
   socket.on("chatMessage", (msg) => {
-    io.emit("chatMessage", msg); // Broadcast message to all clients
+    io.emit("chatMessage", msg); // broadcast to all
   });
 
   socket.on("disconnect", () => {
-    console.log("A user disconnected");
+    console.log("User disconnected:", socket.id);
   });
 });
 
-// --- NFT mint endpoint ---
-app.post("/mintNFT", async (req, res) => {
-  const { wallet } = req.body;
-  if (!wallet) return res.status(400).json({ success: false, message: "Wallet address missing" });
-  
-  try {
-    const result = await mintNFT(wallet);
-    res.json(result);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Error minting NFT" });
-  }
+server.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
 });
-
-// --- Start server ---
-const PORT = 3000;
-server.listen(PORT, () => console.log(`Backend server running at http://localhost:${PORT}`));

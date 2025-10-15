@@ -2,35 +2,246 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web3 Strategy Game</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Three.js Strategy Game</title>
+
+<style>
+  body { margin: 0; overflow: hidden; background: #000; font-family: Arial; }
+  canvas { display: block; }
+
+  #wallet-bar {
+    position: fixed; top: 10px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); padding: 10px 20px;
+    border-radius: 10px; z-index: 10;
+  }
+  button { background: #333; color: white; border: none; padding: 8px 12px; margin: 0 5px; border-radius: 6px; cursor: pointer; }
+  button:hover { background: #555; }
+
+  #chatBox {
+    position: fixed; bottom: 10px; right: 10px;
+    background: rgba(0,0,0,0.6); padding: 10px;
+    border-radius: 10px; max-width: 300px;
+    z-index: 10; color: #fff; font-size: 14px;
+  }
+  #messages { max-height: 150px; overflow-y: auto; margin-bottom: 5px; }
+  #messages div { margin: 2px 0; }
+
+  #storyBox {
+    position: fixed; top: 60px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: #fff;
+    padding: 15px; border-radius: 10px; max-width: 500px; z-index: 10;
+  }
+
+  #mintBtn {
+    position: fixed; top: 10px; right: 10px; z-index: 10;
+    padding: 10px 15px; border-radius: 8px; background: #0f0; color: #000; font-weight: bold; cursor: pointer;
+  }
+</style>
+
+<!-- Ethers.js for MetaMask -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<!-- Socket.io client -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<!-- ES module shim for three.js -->
+<script async src="https://ga.jspm.io/npm:es-module-shims@1.11.1/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/": "https://cdn.jsdelivr.net/npm/three@0.160.0/"
+  }
+}
+</script>
+
 </head>
 <body>
-  <div id="ui">
-    <h1>🌍 Web3 Strategy Game</h1>
+<div id="wallet-bar">
+  <button id="connectMetaMask">🦊 Connect MetaMask</button>
+  <button id="connectPhantom">👻 Connect Phantom</button>
+</div>
 
-    <div class="wallet-buttons">
-      <button id="connectMetamask">Connect MetaMask</button>
-      <button id="connectPhantom">Connect Phantom</button>
-      <button id="mintNFT">Mint NFT</button>
-    </div>
+<div id="storyBox">Click on a territory to read its story.</div>
 
-    <div class="chat-box">
-      <h3>💬 Internal Chat</h3>
-      <div id="chatMessages"></div>
-      <input type="text" id="chatInput" placeholder="Type message..." />
-      <button id="sendMessage">Send</button>
-    </div>
-  </div>
+<div id="chatBox">
+  <div id="messages"></div>
+  <input id="chatInput" placeholder="Type message" style="width:70%">
+  <button id="sendBtn">Send</button>
+</div>
 
-  <canvas id="gameCanvas"></canvas>
+<button id="mintBtn">Mint NFT (Ethereum, no gas)</button>
 
-  <!-- Socket.IO must load from backend -->
-  <script src="/socket.io/socket.io.js"></script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-  <!-- Load main logic -->
-  <script type="module" src="./script.js"></script>
+// --- Scene setup ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0,15,25);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.1;
+
+// --- Lights ---
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+dir.position.set(10,20,10);
+scene.add(dir);
+
+// --- Grass Ground ---
+const loader = new THREE.TextureLoader();
+let grassTexture = loader.load("https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/terrain/grasslight-big.jpg");
+grassTexture.wrapS = THREE.RepeatWrapping;
+grassTexture.wrapT = THREE.RepeatWrapping;
+grassTexture.repeat.set(20,20);
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200,200),
+  new THREE.MeshStandardMaterial({map:grassTexture})
+);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+// --- Territory definitions ---
+const allTerritories = [
+  // Initial 3
+  {name:"Forest", color:0x228b22, texture:"https://media.istockphoto.com/id/1419410282/photo/silent-forest-in-spring-with-beautiful-bright-sun-rays.jpg?s=612x612&w=0&k=20&c=UHeb1pGOw6ozr6utsenXHhV19vW6oiPIxDqhKCS2Llk=", story:["Tall trees stretch towards the sky,thier leaves whispering in the wind.sunlights filters through the branches,painting the ground with golden patches.A carpet of moss and fallen leaves softens every step.Birdsong and the rustle of small animals fill the quiet air.Fresh,earthy scents mingle with the crisp morning dew.The forest feels alive,a word of secrets waiting to be descovered"]},
+  {name:"Desert", color:0xdeb887, texture:"https://images.unsplash.com/photo-1473580044384-7ba9967e16a0?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8ZGVzZXJ0fGVufDB8fDB8fHww&fm=jpg&q=60&w=3000", story:["Endless golden sands stretch under the blazing sun.The wind shapes dunes into ever-changing waves.Scorching days burn bright, while nights turn icy cold.Cacti and hardy shrubs survive where water is rare.Mirages shimmer, teasing the weary traveler.Footprints vanish quickly in the shifting sands.The sky is vast and clear, a canvas of endless blue.Silence reigns, broken only by the whispering wind.Life here is tough, yet strangely beautiful and resilient.The desert holds mysteries, timeless and untamed."]},
+  {name:"Mountain", color:0x888888, texture:"https://thumbs.dreamstime.com/b/idyllic-summer-landscape-clear-mountain-lake-alps-45054687.jpg", story:["Majestic peaks rise high, touching the clouds.Snow-capped summits glisten in the sunlight. cliffs and rocky paths challenge every step.Pine forests cling to the lower slopesFresh mountain air fills the lungs with life.Rivers and streams rush down in sparkling trails.Eagles soar gracefully above the ridges.The silence is deep, broken only by the wind.Sunsets paint the peaks in shades of gold and pink.Mountains stand timeless, strong, and awe-inspiring."]},
+
+  // Next 3
+  {name:"River", color:0x1e90ff, texture:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTp5zHhZMsjqQxahwUWggpa4Ek8D6OKgYV7Kw&s", story:["A river winds gently through fields and forests.Its waters sparkle under the bright sunlight.Ripples dance over stones and pebbles in its path.Birds swoop and fish leap in its clear flow.The soft murmur of water soothes the mind.Trees and flowers grow along its banks, drinking deeply.Boats glide slowly, carried by its current.During rains, it swells with a mighty, roaring force.Reflections of the sky ripple across its surface.The river flows endlessly, a lifeline of nature."]},
+  {name:"Lake", color:0x1e90ff, texture:"https://img.freepik.com/free-vector/serene-lake-landscape-vector-illustration_1308-163498.jpg?semt=ais_hybrid&w=740&q=80", story:["A lake rests quietly, like a mirror to the sky.Its waters shimmer with shades of blue and green.Gentle ripples lap softly against the shore.Trees and flowers reflect on its calm surface.Birds skim across, leaving tiny trails behind.Fish swim gracefully beneath the water’s surface.Boats drift lazily, carried by the gentle breeze.Mountains or hills often frame it like a natural painting.Sunsets turn the lake into a golden, glowing wonder.The lake exudes peace, inviting all to pause and admire."]},
+  {name:"Volcano", color:0xff4500, texture:"https://t4.ftcdn.net/jpg/14/84/26/25/360_F_1484262563_4G93rPbHVtBp6riDEZ1VZj8rKbrQChmW.jpg", story:["A volcano towers with fire and smoke above the land.Its peak belches ash and molten lava into the sky.Cracks and fissures mark the earth around it.Glowing rivers of lava flow, consuming all in their path.The ground trembles with the power beneath.Clouds of smoke drift, darkening the sun.Volcanoes shape landscapes with both creation and destruction.Silence often precedes a sudden, fierce eruption.Life adapts strangely near its fertile slopes.The volcano stands as a symbol of nature’s raw, unstoppable force."]},
+
+  // My 3
+  {name:"Jungle", color:0x006400, texture:"https://media.istockphoto.com/id/1456057968/video/tropical-jungle-movement-with-vegetation.jpg?s=640x640&k=20&c=1E8sVajx61f-KchsfHzHpmqdQ-c5i3l9AXvZJDjH0_Q=", story:["The jungle is dense, alive with every shade of green.Tall trees form a thick canopy, blocking much of the sunlight.Vines hang like curtains, twisting around trunks and branches.The air is humid, filled with earthy scents and the sound of life.Monkeys swing from branch to branch, chattering loudly.Colorful birds flit through the foliage, calling to one another.Hidden streams gurgle as they snake through the undergrowth.Insects buzz, and the rustle of small animals echoes everywhere.The jungle feels mysterious, teeming with secrets and surprises.It is a wild, untamed world, vibrant and full of energy"]},
+  {name:"Canyon", color:0xd2691e, texture:"https://images.unsplash.com/photo-1615551043360-33de8b5f410c?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8Z3JhbmQlMjBjYW55b258ZW58MHx8MHx8fDA%3D&fm=jpg&q=60&w=3000", story:["A canyon cuts deep into the earth, carved over countless years.Steep cliffs rise on either side, jagged and dramatic.Layers of rock tell the story of time and history.The sun casts shadows, highlighting every ridge and crevice.A river often winds at the bottom, small yet powerful.Wind whistles through the narrow passages with a haunting sound.Colors shift from reds and oranges to browns and grays.Eagles and hawks circle high above, surveying the land.The canyon feels vast, both intimidating and awe-inspiring.It is a natural masterpiece, shaped by patience and strength."]},
+  {name:"Plains", color:0x7cfc00, texture:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTsiTVcPieAbfrLBu_USGD2HPW8XtPPQq1I9g&s", story:["Plains stretch wide and flat, as far as the eye can see.Golden grasses sway gently in the breeze.The sun shines brightly over the open land.Herds of animals roam freely across the fields.Rivers meander slowly, nourishing the soil.Wildflowers dot the landscape with bursts of color.The horizon seems endless, meeting the sky in the distance.Birds fly low, skimming over the tall grasses.Life feels peaceful, simple, and unhurried here.Plains are a quiet, vast expanse of nature’s calm beauty."]}
+];
+
+
+// --- Track which territories are unlocked ---
+let unlockedTerritories = allTerritories.slice(0,3); // start with first 3
+let meshTerritories = [];
+
+function createTerritories() {
+  meshTerritories.forEach(m=>scene.remove(m));
+  meshTerritories = [];
+  unlockedTerritories.forEach((t,i)=>{
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(5,1,5),
+      new THREE.MeshStandardMaterial({color:t.color})
+    );
+    box.position.set(i*8 - 8, 0.5, 0);
+    box.name = t.name;
+    box.userData.storyIndex = 0;
+    scene.add(box);
+    meshTerritories.push(box);
+  });
+}
+createTerritories();
+
+// --- Click interaction ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const storyBox = document.getElementById("storyBox");
+
+let clickedTerritories = new Set();
+
+window.addEventListener("click",(event)=>{
+  mouse.x = (event.clientX/window.innerWidth)*2-1;
+  mouse.y = -(event.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  const intersects = raycaster.intersectObjects(meshTerritories);
+  if(intersects.length>0){
+    const obj = intersects[0].object;
+    const terr = allTerritories.find(x=>x.name===obj.name);
+    const idx = obj.userData.storyIndex;
+    
+    // Show story line (edit "story" array above to add your own)
+    storyBox.innerHTML = `<b>${terr.name}</b>: ${terr.story[idx] || "No story yet. Add story lines!"}`;
+    obj.userData.storyIndex = (idx+1)%terr.story.length;
+
+    // Change ground texture
+    loader.load(terr.texture,(tex)=>{
+      ground.material.map = tex;
+      ground.material.needsUpdate = true;
+    });
+
+    clickedTerritories.add(terr.name);
+
+    // Unlock next territories if first 3 are clicked
+    if(clickedTerritories.size === 3 && unlockedTerritories.length === 3){
+      unlockedTerritories = allTerritories.slice(0,6);
+      createTerritories();
+    } else if(clickedTerritories.size === 6 && unlockedTerritories.length === 6){
+      unlockedTerritories = allTerritories.slice(0,9);
+      createTerritories();
+    }
+  }
+});
+
+// --- Animation ---
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}
+animate();
+window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+
+// ========== WALLET CONNECTIONS ==========
+const connectMetaMask = document.getElementById("connectMetaMask");
+connectMetaMask.addEventListener("click",async()=>{
+  if(window.ethereum){
+    try{
+      await window.ethereum.request({method:"eth_requestAccounts"});
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      alert(`✅ Connected MetaMask: ${address}`);
+    }catch(err){alert("❌ MetaMask connection failed");console.error(err);}
+  }else{alert("MetaMask not installed!");}
+});
+const connectPhantom = document.getElementById("connectPhantom");
+connectPhantom.addEventListener("click",async()=>{
+  if(window.solana && window.solana.isPhantom){
+    try{
+      const resp = await window.solana.connect();
+      alert(`✅ Connected Phantom: ${resp.publicKey.toString()}`);
+    }catch(err){alert("❌ Phantom connection failed");console.error(err);}
+  }else{alert("Phantom wallet not installed!");}
+});
+
+// ========== MULTIPLAYER CHAT ==========
+const socket = io("http://localhost:3000");
+const chatInput = document.getElementById("chatInput");
+const sendBtn = document.getElementById("sendBtn");
+const messagesDiv = document.getElementById("messages");
+
+sendBtn.addEventListener("click",()=>{
+  const msg = chatInput.value.trim();
+  if(msg!==""){
+    socket.emit("chatMessage", msg);
+    chatInput.value="";
+  }
+});
+socket.on("chatMessage",(msg)=>{
+  const div = document.createElement("div");
+  div.textContent = msg;
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+});
+
+// ========== NFT MINT ==========
+const mintBtn = document.getElementById("mintBtn");
+mintBtn.addEventListener("click",async()=>{
+  alert("NFT minting simulated (Ethereum, no gas).");
+});
+</script>
 </body>
 </html>
